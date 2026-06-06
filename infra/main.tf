@@ -361,12 +361,49 @@ resource "aws_cloudfront_distribution" "frontend" {
   price_class         = "PriceClass_All"
   comment             = "${local.name} frontend distribution"
 
+  # Origin 1 — S3 frontend bucket
   origin {
     domain_name              = aws_s3_bucket.frontend.bucket_regional_domain_name
     origin_id                = "s3-frontend"
     origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
   }
 
+  # Origin 2 — EC2 backend
+  origin {
+    domain_name ="ec2-52-66-124-89.ap-south-1.compute.amazonaws.com"
+    origin_id   = "ec2-backend"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  # Route /api/* to EC2 — no caching
+  ordered_cache_behavior {
+    path_pattern           = "/api/*"
+    target_origin_id       = "ec2-backend"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods         = ["GET", "HEAD"]
+
+    forwarded_values {
+      query_string = true
+      headers      = ["Authorization", "Content-Type", "Origin", "Accept"]
+      cookies {
+        forward = "none"
+      }
+    }
+
+    min_ttl     = 0
+    default_ttl = 0
+    max_ttl     = 0
+    compress    = false
+  }
+
+  # Default — serve frontend from S3
   default_cache_behavior {
     target_origin_id       = "s3-frontend"
     viewer_protocol_policy = "redirect-to-https"
