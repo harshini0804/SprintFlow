@@ -74,7 +74,7 @@ jobs:
         run: |
           ssh -i ~/.ssh/deploy_key ubuntu@${{ secrets.EC2_HOST }} << 'ENDSSH'
             set -e
-            cd /home/ubuntu/sprintflow
+            cd /home/ubuntu/SprintFlow
 
             # Pull latest code
             git pull origin main
@@ -88,14 +88,14 @@ jobs:
             pip install -q --upgrade pip
             pip install -q -r backend/requirements.txt
 
-            # Run migrations (DATABASE_URL fetched from SSM by alembic env.py)
+            # Run migrations
             cd backend
             export AWS_REGION=ap-south-1
             DB_HOST=$(aws ssm get-parameter --name "/sprintflow/db_host" --query "Parameter.Value" --output text)
             DB_PASS=$(aws ssm get-parameter --name "/sprintflow/db_password" --with-decryption --query "Parameter.Value" --output text)
             DB_NAME=$(aws ssm get-parameter --name "/sprintflow/db_name" --query "Parameter.Value" --output text)
             DB_USER=$(aws ssm get-parameter --name "/sprintflow/db_user" --query "Parameter.Value" --output text)
-            export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:5432/${DB_NAME}"
+            export DATABASE_URL="postgresql+psycopg://${DB_USER}:${DB_PASS}@${DB_HOST}:5432/${DB_NAME}"
             ../venv/bin/alembic upgrade head
             unset DATABASE_URL DB_PASS
             cd ..
