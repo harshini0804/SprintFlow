@@ -26,7 +26,7 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         env:
-          VITE_API_BASE_URL: http://${{ secrets.EC2_HOST }}
+          VITE_API_BASE_URL: https://${{ secrets.CLOUDFRONT_DOMAIN }}
         run: npm run build
 
       - name: Configure AWS credentials
