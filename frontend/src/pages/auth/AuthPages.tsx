@@ -33,11 +33,11 @@ export function LoginPage() {
       if (pendingInvite) {
         try {
           const joinRes = await workspaceApi.acceptInvite(pendingInvite)
-          // Re-login to get a JWT scoped to the joined workspace
+          // Switch JWT to the joined workspace
           if (joinRes.data?.tenant_id) {
-            const reLogin = await authApi.login({ email, password })
-            const newToken = reLogin.data.access_token
-            const newTenantId = reLogin.data.tenant_id
+            const switchRes = await authApi.switchWorkspace(joinRes.data.tenant_id)
+            const newToken = switchRes.data.access_token
+            const newTenantId = switchRes.data.tenant_id
             localStorage.setItem('token', newToken)
             localStorage.setItem('tenant_id', newTenantId)
             const me2 = await authApi.me()
@@ -117,11 +117,11 @@ export function RegisterPage() {
       if (pendingInvite) {
         try {
           const joinRes = await workspaceApi.acceptInvite(pendingInvite)
-          // Re-login to get a JWT scoped to the joined workspace
+          // Switch JWT to the joined workspace
           if (joinRes.data?.tenant_id) {
-            const reLogin = await authApi.login({ email: form.email, password: form.password })
-            const newToken = reLogin.data.access_token
-            const newTenantId = reLogin.data.tenant_id
+            const switchRes = await authApi.switchWorkspace(joinRes.data.tenant_id)
+            const newToken = switchRes.data.access_token
+            const newTenantId = switchRes.data.tenant_id
             localStorage.setItem('token', newToken)
             localStorage.setItem('tenant_id', newTenantId)
             const me2 = await authApi.me()
