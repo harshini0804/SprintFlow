@@ -1,0 +1,150 @@
+name: Deploy SprintFlow
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy-frontend:
+    name: Build and deploy React to S3 + CloudFront
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: http://${{ secrets.EC2_HOST }}
+        run: npm run build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Sync to S3
+        run: |
+          aws s3 sync frontend/dist/ s3://${{ secrets.FRONTEND_BUCKET }} \
+            --delete \
+            --cache-control "public, max-age=31536000" \
+            --exclude "index.html"
+          # index.html should not be cached
+          aws s3 cp frontend/dist/index.html s3://${{ secrets.FRONTEND_BUCKET }}/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths "/*"
+
+  deploy-backend:
+    name: Deploy FastAPI to EC2
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to EC2
+        run: |
+          ssh -i ~/.ssh/deploy_key ubuntu@${{ secrets.EC2_HOST }} << 'ENDSSH'
+            set -e
+            cd /home/ubuntu/sprintflow
+
+            # Pull latest code
+            git pull origin main
+
+            # Set up or update virtualenv
+            if [ ! -d "venv" ]; then
+              python3 -m venv venv
+            fi
+
+            source venv/bin/activate
+            pip install -q --upgrade pip
+            pip install -q -r backend/requirements.txt
+
+            # Run migrations (DATABASE_URL fetched from SSM by alembic env.py)
+            cd backend
+            export AWS_REGION=ap-south-1
+            DB_HOST=$(aws ssm get-parameter --name "/sprintflow/db_host" --query "Parameter.Value" --output text)
+            DB_PASS=$(aws ssm get-parameter --name "/sprintflow/db_password" --with-decryption --query "Parameter.Value" --output text)
+            DB_NAME=$(aws ssm get-parameter --name "/sprintflow/db_name" --query "Parameter.Value" --output text)
+            DB_USER=$(aws ssm get-parameter --name "/sprintflow/db_user" --query "Parameter.Value" --output text)
+            export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:5432/${DB_NAME}"
+            ../venv/bin/alembic upgrade head
+            unset DATABASE_URL DB_PASS
+            cd ..
+
+            # Restart services
+            sudo systemctl restart sprintflow-api sprintflow-celery
+            sudo nginx -t && sudo systemctl reload nginx
+
+            echo "Deployment complete"
+          ENDSSH
+
+  first-time-setup:
+    name: First-time server setup (run manually once)
+    runs-on: ubuntu-latest
+    if: false  # Change to: github.event_name == 'workflow_dispatch' && github.event.inputs.setup == 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Initial server setup
+        run: |
+          # Copy systemd service files
+          scp -i ~/.ssh/deploy_key scripts/sprintflow-api.service ubuntu@${{ secrets.EC2_HOST }}:/tmp/
+          scp -i ~/.ssh/deploy_key scripts/sprintflow-celery.service ubuntu@${{ secrets.EC2_HOST }}:/tmp/
+          scp -i ~/.ssh/deploy_key scripts/sprintflow.nginx.conf ubuntu@${{ secrets.EC2_HOST }}:/tmp/
+
+          ssh -i ~/.ssh/deploy_key ubuntu@${{ secrets.EC2_HOST }} << 'ENDSSH'
+            set -e
+            # Clone repo
+            cd /home/ubuntu
+            git clone https://github.com/${{ github.repository }} sprintflow
+            cd sprintflow
+
+            # Install systemd services
+            sudo cp /tmp/sprintflow-api.service /etc/systemd/system/
+            sudo cp /tmp/sprintflow-celery.service /etc/systemd/system/
+
+            # Configure Nginx
+            sudo cp /tmp/sprintflow.nginx.conf /etc/nginx/sites-available/sprintflow
+            sudo ln -sf /etc/nginx/sites-available/sprintflow /etc/nginx/sites-enabled/sprintflow
+            sudo rm -f /etc/nginx/sites-enabled/default
+            sudo nginx -t && sudo systemctl reload nginx
+
+            # Enable services on boot
+            sudo systemctl daemon-reload
+            sudo systemctl enable sprintflow-api sprintflow-celery
+
+            echo "First-time setup complete. Run deploy workflow to deploy code."
+          ENDSSH

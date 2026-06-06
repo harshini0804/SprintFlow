@@ -1,0 +1,26 @@
+# Copy this to terraform.tfvars and fill in your values
+# NEVER commit terraform.tfvars to git
+
+aws_region       = "ap-south-1"
+project_name     = "sprintflow"
+
+# Create this key pair first: AWS Console → EC2 → Key Pairs → Create key pair
+ec2_key_name     = "sprintflow-key"
+
+# Your public IP with /32 — find it at: curl ifconfig.me
+allowed_ssh_cidr = "YOUR_IP_ADDRESS/32"
+
+# RDS password — min 8 chars, no special chars that break connection strings
+db_password      = "ChangeMe123Secure"
+db_username      = "postgres"
+db_name          = "sprintflow"
+
+# JWT secret — generate with: python3 -c "import secrets; print(secrets.token_hex(32))"
+jwt_secret       = "your-jwt-secret-min-32-chars-here"
+
+# Verified SES email — must verify this address in AWS SES first
+ses_sender_email = "noreply@yourdomain.com"
+
+# Stripe (use test keys during development)
+stripe_secret_key     = "sk_test_..."
+stripe_webhook_secret = "whsec_..."
