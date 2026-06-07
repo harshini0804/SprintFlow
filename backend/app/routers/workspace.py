@@ -106,13 +106,28 @@ def list_team_members(
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
     members = db.query(TeamMember).filter(TeamMember.team_id == team_id).all()
+
+    def _avatar_url(key):
+        if not key:
+            return None
+        from app.services.aws import generate_presigned_get
+        try:
+            # If it's a full URL (legacy), extract the key
+            if key.startswith("http"):
+                import re
+                match = re.search(r"amazonaws\.com/(.+)", key)
+                key = match.group(1) if match else key
+            return generate_presigned_get(key, expires=3600)
+        except Exception:
+            return None
+
     return [
         {
             "id": str(m.id),
             "user_id": str(m.user_id),
             "email": m.user.email,
             "full_name": m.user.full_name,
-            "profile_picture_url": m.user.profile_picture_url,
+            "profile_picture_url": _avatar_url(m.user.profile_picture_url),
             "role": m.role.value,
             "joined_at": m.joined_at,
         }
