@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import NotificationBell from '../notifications/NotificationBell'
-import { workspaceApi } from '../../api/client'
+import { workspaceApi, authApi } from '../../api/client'
 
 export default function Navbar() {
   const { user, logout } = useAuth()
   const [isProfileOpen, setIsProfileOpen] = useState(false)
   const [workspaceName, setWorkspaceName] = useState('My Workspace')
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const location = useLocation()
   const navigate = useNavigate()
@@ -17,6 +18,16 @@ export default function Navbar() {
       workspaceApi.get().then(res => setWorkspaceName(res.data.name)).catch(() => {})
     }
   }, [user])
+
+  useEffect(() => {
+    if (user?.profile_picture_url) {
+      authApi.getAvatarUrl()
+        .then(r => setAvatarUrl(r.data.url))
+        .catch(() => setAvatarUrl(null))
+    } else {
+      setAvatarUrl(null)
+    }
+  }, [user?.profile_picture_url])
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -82,8 +93,8 @@ export default function Navbar() {
                 : 'border-transparent bg-slate-100 text-slate-600 hover:border-slate-300'
             }`}
           >
-            {user?.profile_picture_url ? (
-              <img src={user.profile_picture_url} alt="avatar"
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="avatar"
                 className="h-full w-full rounded-full object-cover" />
             ) : (
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
