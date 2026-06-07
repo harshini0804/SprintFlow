@@ -1,18 +1,17 @@
 [Unit]
-Description=SprintFlow Celery worker (SQS broker)
+Description=SprintFlow email worker (SQS direct poller)
 After=network.target
 
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/home/ubuntu/sprintflow/backend
-ExecStart=/home/ubuntu/sprintflow/venv/bin/celery -A app.worker worker --loglevel=info --concurrency=2
+WorkingDirectory=/home/ubuntu/SprintFlow/backend
+ExecStart=/home/ubuntu/SprintFlow/venv/bin/python -m app.worker
 Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=sprintflow-celery
-
 Environment=AWS_REGION=ap-south-1
 
 [Install]
