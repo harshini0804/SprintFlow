@@ -1,8 +1,7 @@
 """
-AWS Lambda function — SprintFlow task refinement
-Deploy: zip lambda_function.py && aws lambda update-function-code ...
+AWS Lambda function — SprintFlow task refinement using Groq API
 Runtime: Python 3.11, handler: lambda_function.handler
-Environment variable: ANTHROPIC_API_KEY or OPENAI_API_KEY
+Environment variable: GROQ_API_KEY
 """
 import json
 import os
@@ -15,59 +14,67 @@ def handler(event, context):
     if not prompt:
         return {"suggestions": []}
 
-    suggestions = _call_llm(prompt)
+    suggestions = _call_groq(prompt)
     return {"suggestions": suggestions}
 
 
-def _call_llm(prompt: str) -> list[str]:
-    """
-    Calls Anthropic Claude API to generate 5 refined task titles.
-    Falls back to rule-based suggestions if API key is not set.
-    """
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+def _call_groq(prompt: str) -> list[str]:
+    api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
+        print("No GROQ_API_KEY found, using fallback")
         return _fallback_suggestions(prompt)
 
     system = (
         "You are a project management assistant. "
         "Given a vague task description, generate exactly 5 refined, specific, "
-        "actionable task titles. Return ONLY a JSON array of 5 strings. "
-        "Each title should be clear, concise, and start with an action verb."
+        "actionable task titles. Return ONLY a valid JSON array of 5 strings, "
+        "nothing else. No explanation, no markdown, no code fences — just the raw JSON array. "
+        "Each title must be clear, concise, and start with an action verb. "
+        "Example: [\"Fix null pointer in auth middleware\", \"Add unit tests for login flow\"]"
     )
 
     payload = json.dumps({
-        "model": "claude-haiku-4-5-20251001",
+        "model": "llama-3.1-8b-instant",
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": f"Refine this task: {prompt}"}
+        ],
+        "temperature": 0.7,
         "max_tokens": 300,
-        "system": system,
-        "messages": [{"role": "user", "content": f"Refine this task: {prompt}"}],
     }).encode()
 
     req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
+        "https://api.groq.com/openai/v1/chat/completions",
         data=payload,
         headers={
             "Content-Type": "application/json",
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
+            "Authorization": f"Bearer {api_key}",
+            "User-Agent": "Mozilla/5.0 (compatible; SprintFlow/1.0)",
         },
         method="POST",
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=15) as resp:
             body = json.loads(resp.read())
-            text = body["content"][0]["text"].strip()
-            # Parse the JSON array response
+            text = body["choices"][0]["message"]["content"].strip()
+            print(f"Groq response: {text}")
+            # Strip markdown code fences if present
+            if text.startswith("```"):
+                lines = text.split("\n")
+                text = "\n".join(lines[1:-1]).strip()
             suggestions = json.loads(text)
             if isinstance(suggestions, list):
                 return [str(s) for s in suggestions[:5]]
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode()
+        print(f"HTTP error {e.code}: {error_body}")
     except Exception as e:
-        print(f"LLM call failed: {e}")
+        print(f"Groq call failed: {e}")
 
     return _fallback_suggestions(prompt)
 
 
 def _fallback_suggestions(prompt: str) -> list[str]:
-    """Simple rule-based fallbacks when LLM is unavailable."""
     verbs = ["Implement", "Design", "Review", "Test", "Document"]
     return [f"{verb} {prompt}" for verb in verbs]
