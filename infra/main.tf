@@ -236,7 +236,7 @@ data "aws_ami" "ubuntu" {
 }
 
 resource "aws_instance" "app" {
-  ami                    = data.aws_ami.ubuntu.id
+  ami                    = "ami-040e95ba14632401d"
   instance_type          = "t3.micro"
   key_name               = var.ec2_key_name
   subnet_id              = aws_subnet.public_a.id
@@ -370,7 +370,7 @@ resource "aws_cloudfront_distribution" "frontend" {
 
   # Origin 2 — EC2 backend
   origin {
-    domain_name ="ec2-13-127-143-54.ap-south-1.compute.amazonaws.com"
+    domain_name ="ec2-13-234-119-139.ap-south-1.compute.amazonaws.com"
     origin_id   = "ec2-backend"
 
     custom_origin_config {
