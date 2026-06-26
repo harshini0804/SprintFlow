@@ -73,7 +73,14 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
     if not user or not verify_password(req.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    membership = db.query(TenantMember).filter(TenantMember.user_id == user.id).first()
+    # Pick the most recently joined workspace — this ensures invited users
+    # land on the workspace they joined, not their own empty one
+    membership = (
+        db.query(TenantMember)
+        .filter(TenantMember.user_id == user.id)
+        .order_by(TenantMember.joined_at.desc())
+        .first()
+    )
     if not membership:
         raise HTTPException(status_code=400, detail="No workspace found for this user")
 
