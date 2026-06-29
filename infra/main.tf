@@ -370,7 +370,7 @@ resource "aws_cloudfront_distribution" "frontend" {
 
   # Origin 2 — EC2 backend
   origin {
-    domain_name ="ec2-13-207-150-125.ap-south-1.compute.amazonaws.com"
+    domain_name ="ec2-52-66-204-183.ap-south-1.compute.amazonaws.com"
     origin_id   = "ec2-backend"
 
     custom_origin_config {
